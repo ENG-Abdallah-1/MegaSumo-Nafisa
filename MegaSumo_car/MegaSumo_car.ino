@@ -53,7 +53,11 @@ inline int getDistance(byte trig_pin, byte echo_pin);
 
 /********************* Global Variables **************************/
 int frontDist, backDist, leftDist, rightDist;
+unsigned long currentMillis  = 0; 
+unsigned long previousMillis = 0;
+unsigned long interval = 0;  // Variable for dynamic delay handling
 /*****************************************************************/
+
 
 void setup() {
 
@@ -89,120 +93,123 @@ void setup() {
 }
 
 void loop() {
+  currentMillis = millis();  
 
-  // Capture ultrasonic distances at the start of the loop for efficient decision-making
+  
   frontDist = GetDistance_FRONT_ULTRASONIC();
   backDist = GetDistance_BACK_ULTRASONIC();
   leftDist = GetDistance_LEFT_ULTRASONIC();
   rightDist = GetDistance_RIGHT_ULTRASONIC();
 
-  // React fast to IR sensor readings (real-time boundary detection)
-  if (GetReading_FRONT_LEFT_IR() == 1 || GetReading_FRONT_RIGHT_IR() == 0) {
-    // Front IR triggered: Move aggressively forward
-    digitalWrite(MOTOR_LEFT_FORWARD_PIN, 1);
-    digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
-    digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 1);
-    digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
-    delay(MOVE_DELAY_MS);
+  
+  if (currentMillis - previousMillis >= interval) {
 
-  } else if (GetReading_BACK_LEFT_IR() == 0 && GetReading_BACK_RIGHT_IR() == 0) {
-    // Both back IR triggered: Retreat (possibly near arena boundary)
-    digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
-    digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
-    delay(MOVE_DELAY_MS);
-
-  } else if (GetReading_BACK_LEFT_IR() == 0 || GetReading_BACK_RIGHT_IR() == 0) {
-    // One back IR triggered: Stop immediately to avoid falling out
-    digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
-    digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
-    delay(STOP_DELAY_MS);
-
-  } else if (GetReading_BACK_RIGHT_IR() == 0 && GetReading_FRONT_RIGHT_IR() == 0) {
-    // Right side detected: Quick turn to reposition
-    digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
-    digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 1);
-    digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
-    delay(TURN_DELAY_MS);
-    // Additional turn for full repositioning
-    digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
-    digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
-    delay(MOVE_DELAY_MS);
-
-  } else if (GetReading_FRONT_LEFT_IR() == 1 && GetReading_BACK_LEFT_IR() == 0) {
-    // Left side detected: Turn left to face opponent
-    digitalWrite(MOTOR_LEFT_FORWARD_PIN, 1);
-    digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
-    digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
-    delay(TURN_DELAY_MS);
-    // Final adjustment
-    digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
-    digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
-    digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
-    delay(MOVE_DELAY_MS);
-
-  } else {
-    // Ultrasonic sensor-based opponent avoidance
-    if (frontDist <= ULTRASONIC_MAX_DISTANCE || 
-        backDist <= ULTRASONIC_MAX_DISTANCE || 
-        leftDist <= ULTRASONIC_MAX_DISTANCE || 
-        rightDist <= ULTRASONIC_MAX_DISTANCE) {
+    // React to IR sensor readings for real-time boundary detection
+    if (GetReading_FRONT_LEFT_IR() == 1 || GetReading_FRONT_RIGHT_IR() == 0) {
       
-      if (frontDist <= backDist && frontDist <= leftDist && frontDist <= rightDist) {
-        // Opponent detected in front: Charge forward
-        digitalWrite(MOTOR_LEFT_FORWARD_PIN, 1);
-        digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
-        digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 1);
-        digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
+      // Move Forward
+      digitalWrite(MOTOR_LEFT_FORWARD_PIN  , 1);
+      digitalWrite(MOTOR_LEFT_BACKWARD_PIN , 0);
+      digitalWrite(MOTOR_RIGHT_FORWARD_PIN , 1);
+      digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
 
-      } else if (backDist <= leftDist && backDist <= rightDist) {
-        // Opponent behind: Retreat and reposition
-        digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
-        digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
-        digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
-        digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
+      // Set the next delay interval for movement
+      interval = MOVE_DELAY_MS;  
 
-      } else if (leftDist <= rightDist) {
-        // Opponent on left: Turn left
-        digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
-        digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
-        digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 1);
-        digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
-        delay(TURN_DELAY_MS);
+    } else if (GetReading_BACK_LEFT_IR() == 0 && GetReading_BACK_RIGHT_IR() == 0) {
+      
+      digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
+      digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
+      digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
+      digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
+      interval = MOVE_DELAY_MS;  // Retreat for this duration
 
-      } else if (rightDist <= leftDist) {
-        // Opponent on right: Turn right
-        digitalWrite(MOTOR_LEFT_FORWARD_PIN, 1);
-        digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
-        digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
-        digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
-        delay(TURN_DELAY_MS);
-      }
-    } else {
-      // No opponent or boundary detected: Stop
+    } else if (GetReading_BACK_LEFT_IR() == 0 || GetReading_BACK_RIGHT_IR() == 0) {
+      // One back IR triggered: Stop immediately to avoid falling out
       digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
       digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
       digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
       digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
+      interval = STOP_DELAY_MS;  // Stop for this duration
+
+    } else if (GetReading_BACK_RIGHT_IR() == 0 && GetReading_FRONT_RIGHT_IR() == 0) {
+      
+      digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
+      digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
+      digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 1);
+      digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
+      interval = TURN_DELAY_MS;  // Set delay for turning
+
+    } else if (GetReading_FRONT_LEFT_IR() == 1 && GetReading_BACK_LEFT_IR() == 0) {
+      // Left side detected: Turn left to face opponent
+      digitalWrite(MOTOR_LEFT_FORWARD_PIN, 1);
+      digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
+      digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
+      digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
+      interval = TURN_DELAY_MS;  // Set delay for turning
+
+    } else {
+      
+      if (frontDist <= ULTRASONIC_MAX_DISTANCE || 
+          backDist <= ULTRASONIC_MAX_DISTANCE || 
+          leftDist <= ULTRASONIC_MAX_DISTANCE || 
+          rightDist <= ULTRASONIC_MAX_DISTANCE) {
+        
+        if (frontDist <= backDist && frontDist <= leftDist && frontDist <= rightDist) {
+          // Opponent detected in front: Charge forward
+          digitalWrite(MOTOR_LEFT_FORWARD_PIN, 1);
+          digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
+          digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 1);
+          digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
+          interval = MOVE_DELAY_MS;
+
+        } else if (backDist <= leftDist && backDist <= rightDist) {
+          // Opponent behind: Retreat and reposition
+          digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
+          digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
+          digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
+          digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
+          interval = MOVE_DELAY_MS;
+
+        } else if (leftDist <= rightDist) {
+          // Opponent on left: Turn left
+          digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
+          digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 1);
+          digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 1);
+          digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
+          interval = TURN_DELAY_MS;
+
+        } else if (rightDist <= leftDist) {
+          // Opponent on right: Turn right
+          digitalWrite(MOTOR_LEFT_FORWARD_PIN, 1);
+          digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
+          digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
+          digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 1);
+          interval = TURN_DELAY_MS;
+        }
+      } else {
+        // No opponent or boundary detected: Stop
+        digitalWrite(MOTOR_LEFT_FORWARD_PIN, 0);
+        digitalWrite(MOTOR_LEFT_BACKWARD_PIN, 0);
+        digitalWrite(MOTOR_RIGHT_FORWARD_PIN, 0);
+        digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, 0);
+        interval = STOP_DELAY_MS;
+      }
     }
+
+    // Update the previousMillis to current time after action
+    previousMillis = currentMillis;
   }
 }
 
 inline int getDistance(byte trig_pin, byte echo_pin) {
   digitalWrite(trig_pin, LOW);
   delayMicroseconds(2);
+  
   digitalWrite(trig_pin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trig_pin, LOW);
 
-  long duration = pulseIn(echo_pin, HIGH);
-  return duration * 0.034 / 2;
+
+  return pulseIn(echo_pin, HIGH) * 0.034 / 2;
 }
